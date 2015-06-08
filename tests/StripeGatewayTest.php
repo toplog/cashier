@@ -270,6 +270,53 @@ class StripeGatewayTest extends PHPUnit_Framework_TestCase {
 	}
 
 
+	public function testApplyingSubscriptionCoupon()
+	{
+		$billable = $this->mockBillableInterface();
+		$gateway = m::mock('Laravel\Cashier\StripeGateway[getStripeCustomer]', array($billable, 'plan'));
+		$gateway->shouldReceive('getStripeCustomer')->andReturn($customer = m::mock('StdClass'));
+		$customer->shouldReceive('updateSubscription')->once()->with(['coupon' => 'coupon-code'])->andReturn((object) ['id' => 'sub_id', 'coupon' => 'coupon-code']);
+
+		$subscription = $gateway->applySubscriptionCoupon('coupon-code');
+
+		$this->assertEquals('coupon-code', $subscription->coupon);
+	}
+
+
+	public function testCreatePassesProperOptionsWithPropertiesToCustomer()
+	{
+		$billable = $this->mockBillableInterface();
+		$billable->shouldReceive('getCurrency')->andReturn('gbp');
+		$gateway = m::mock('Laravel\Cashier\StripeGateway[getStripeCustomer,createStripeCustomer,updateLocalStripeData]', array($billable, 'plan'));
+		$gateway->shouldReceive('createStripeCustomer')->andReturn($customer = m::mock('StdClass'));
+		$customer->shouldReceive('updateSubscription')->once()->with([
+			'plan' => 'plan',
+			'prorate' => true,
+			'quantity' => 1,
+			'trial_end' => null,
+			'coupon' => 'coupon-code'
+		])->andReturn((object) ['id' => 'sub_id']);
+		$customer->id = 'foo';
+		$billable->shouldReceive('setStripeSubscription')->once()->with('sub_id');
+		$gateway->shouldReceive('getStripeCustomer')->once()->with('foo');
+		$gateway->shouldReceive('updateLocalStripeData')->once();
+
+		$gateway->create('token', ['coupon' => 'coupon-code']);
+	}
+
+
+	public function testSwapCallsCreateWithPropertiesWithProperArguments()
+	{
+		$billable = $this->mockBillableInterface();
+		$gateway = m::mock('Laravel\Cashier\StripeGateway[create,getStripeCustomer,maintainTrial]', array($billable, 'plan'));
+		$gateway->shouldReceive('getStripeCustomer')->once()->andReturn($customer = m::mock('StdClass'));
+		$gateway->shouldReceive('maintainTrial')->once();
+		$gateway->shouldReceive('create')->once()->with(null, ['coupon' => 'coupon-code'], $customer);
+
+		$gateway->swap(null, ['coupon' => 'coupon-code']);
+	}
+
+
 	protected function mockBillableInterface()
 	{
 		$billable = m::mock('Laravel\Cashier\BillableInterface');

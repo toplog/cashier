@@ -93,7 +93,7 @@ class StripeGateway {
 		}
 
 		$this->billable->setStripeSubscription(
-			$customer->updateSubscription($this->buildPayload())->id
+			$customer->updateSubscription($this->buildPayload($properties))->id
 		);
 
 		$customer = $this->getStripeCustomer($customer->id);
@@ -111,12 +111,20 @@ class StripeGateway {
 	 *
 	 * @return array
 	 */
-	protected function buildPayload()
+	protected function buildPayload($properties = array())
 	{
 		$payload = [
 			'plan' => $this->plan, 'prorate' => $this->prorate,
 			'quantity' => $this->quantity, 'trial_end' => $this->getTrialEndForUpdate(),
 		];
+
+		// Stripe doesn't like null coupons, so let's remove them.
+		if (array_key_exists('coupon', $properties) && $properties['coupon'] === null)
+		{
+			unset($properties['coupon']);
+		}
+
+		$payload = array_merge($payload, $properties);
 
 		return $payload;
 	}
@@ -127,7 +135,7 @@ class StripeGateway {
 	 * @param  int|null  $quantity
 	 * @return void
 	 */
-	public function swap($quantity = null)
+	public function swap($quantity = null, $properties = array())
 	{
 		$customer = $this->getStripeCustomer();
 
@@ -157,7 +165,7 @@ class StripeGateway {
 			$this->quantity($quantity);
 		}
 
-		return $this->create(null, [], $customer);
+		return $this->create(null, $properties, $customer);
 	}
 
 	/**
@@ -447,6 +455,19 @@ class StripeGateway {
 		$customer->coupon = $coupon;
 
 		$customer->save();
+	}
+
+	/**
+	 * Apply a coupon to the billable entity.
+	 *
+	 * @param  string  $coupon
+	 * @return void
+	 */
+	public function applySubscriptionCoupon($coupon)
+	{
+		$customer = $this->getStripeCustomer();
+
+		return $customer->updateSubscription(['coupon' => $coupon]);
 	}
 
 	/**
